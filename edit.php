@@ -1,78 +1,92 @@
-<?php 
+<?php
+include 'includes/header.php';
 include 'config/db.php';
-include 'includes/header.php'; 
 
-// Proveravamo da li je prosleđen ID zadatka koji menjamo
-if (!isset($_GET['id']) || empty($_GET['id'])) {
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+$user_id = $_SESSION['user_id'];
+$task_id = $_GET['id'] ?? null;
+
+if (!$task_id) {
     header("Location: index.php");
     exit();
 }
 
-$task_id = (int)$_GET['id'];
-
-// Obrada izmene zadatka kad se pošalje forma
+// Obrada izmene zadatka
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_task'])) {
     $title = trim($_POST['title']);
     $description = trim($_POST['description']);
-    $status = $_POST['status'];
+    $priority = $_POST['priority'] ?? 'medium';
+    $status = $_POST['status'] ?? 'pending';
+    $due_date = !empty($_POST['due_date']) ? $_POST['due_date'] : NULL;
 
     if (!empty($title)) {
-        $stmt = $conn->prepare("UPDATE tasks SET title = ?, description = ?, status = ? WHERE id = ?");
-        $stmt->bind_param("sssi", $title, $description, $status, $task_id);
+        $stmt = $conn->prepare("UPDATE tasks SET title = ?, description = ?, priority = ?, status = ?, due_date = ? WHERE id = ? AND user_id = ?");
+        $stmt->bind_param("sssssii", $title, $description, $priority, $status, $due_date, $task_id, $user_id);
         $stmt->execute();
         $stmt->close();
-
         header("Location: index.php");
         exit();
     }
 }
 
-// Izvlačimo trenutne podatke o tom zadatku iz baze
-$stmt = $conn->prepare("SELECT * FROM tasks WHERE id = ?");
-$stmt->bind_param("i", $task_id);
+// Dohvatanje trenutnih podataka o zadatku
+$stmt = $conn->prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
+$stmt->bind_param("ii", $task_id, $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
 $task = $result->fetch_assoc();
 $stmt->close();
 
 if (!$task) {
-    echo "<h3>Zadatak nije pronađen.</h3>";
-    include 'includes/footer.php';
+    header("Location: index.php");
     exit();
 }
 ?>
 
-<h2>Izmeni Zadatak</h2>
-
 <div class="card">
-    <form action="edit.php?id=<?php echo $task_id; ?>" method="POST">
-        <div style="margin-bottom: 15px;">
-            <label for="title" style="display:block; margin-bottom: 5px; font-weight: bold;">Naziv zadatka:</label>
-            <input type="text" id="title" name="title" value="<?php echo htmlspecialchars($task['title']); ?>" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+    <h2>Izmeni Zadatak</h2>
+    <form action="edit.php?id=<?= $task_id; ?>" method="POST" style="margin-top: 1rem;">
+        <div class="form-group">
+            <label for="title">Naziv zadatka:</label>
+            <input type="text" id="title" name="title" value="<?= htmlspecialchars($task['title']); ?>" required>
         </div>
         
-        <div style="margin-bottom: 15px;">
-            <label for="description" style="display:block; margin-bottom: 5px; font-weight: bold;">Opis:</label>
-            <textarea id="description" name="description" rows="4" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;"><?php echo htmlspecialchars($task['description']); ?></textarea>
+        <div class="form-group">
+            <label for="description">Opis (opciono):</label>
+            <textarea id="description" name="description" rows="3"><?= htmlspecialchars($task['description']); ?></textarea>
         </div>
 
-        <div style="margin-bottom: 15px;">
-            <label for="status" style="display:block; margin-bottom: 5px; font-weight: bold;">Status:</label>
-            <select id="status" name="status" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
-                <option value="na_waitu" <?php echo ($task['status'] === 'na_waitu') ? 'selected' : ''; ?>>Na čekanju</option>
-                <option value="u_toku" <?php echo ($task['status'] === 'u_toku') ? 'selected' : ''; ?>>U toku</option>
-                <option value="zavrseno" <?php echo ($task['status'] === 'zavrseno') ? 'selected' : ''; ?>>Završeno</option>
-            </select>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="priority">Prioritet:</label>
+                <select id="priority" name="priority" style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc;">
+                    <option value="low" <?= $task['priority'] === 'low' ? 'selected' : ''; ?>>Nizak</option>
+                    <option value="medium" <?= $task['priority'] === 'medium' ? 'selected' : ''; ?>>Srednji</option>
+                    <option value="high" <?= $task['priority'] === 'high' ? 'selected' : ''; ?>>Visok</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="status">Status:</label>
+                <select id="status" name="status" style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc;">
+                    <option value="pending" <?= $task['status'] === 'pending' ? 'selected' : ''; ?>>Na čekanju</option>
+                    <option value="in_progress" <?= $task['status'] === 'in_progress' ? 'selected' : ''; ?>>U toku</option>
+                    <option value="completed" <?= $task['status'] === 'completed' ? 'selected' : ''; ?>>Završeno</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="due_date">Rok za završetak:</label>
+                <input type="date" id="due_date" name="due_date" value="<?= $task['due_date']; ?>" style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc;">
+            </div>
         </div>
 
-        <div style="display: flex; gap: 10px;">
-            <button type="submit" name="update_task" style="background: #0284c7; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                Sačuvaj izmene
-            </button>
-            <a href="index.php" style="background: #64748b; color: white; text-decoration: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; display: inline-block;">
-                Odustani
-            </a>
-        </div>
+        <button type="submit" name="update_task" class="btn" style="margin-top: 1rem;">Sačuvaj Izmene</button>
+        <a href="index.php" class="btn" style="background-color: #64748b; text-decoration: none; margin-left: 10px;">Otkaži</a>
     </form>
 </div>
 
